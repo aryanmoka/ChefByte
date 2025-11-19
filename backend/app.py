@@ -10,7 +10,8 @@ from datetime import datetime
 from database import Database 
 import smtplib
 import ssl
-import logging # Import logging
+import logging
+from google.api_core.exceptions import NotFound
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -26,30 +27,29 @@ CORS(app, resources={r"/api/*": {"origins": [
 ]}})
 
 # --- Configuration ---
-# Load API key and other sensitive info from environment variables
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SENDER_EMAIL = os.getenv('GMAIL_APP_EMAIL')
 SENDER_PASSWORD = os.getenv('GMAIL_APP_PASSWORD')
-RECEIVER_EMAIL = os.getenv('GMAIL_APP_EMAIL') # Make receiver email configurable too
+RECEIVER_EMAIL = os.getenv('GMAIL_APP_EMAIL')  # Make receiver email configurable too
+MODEL_NAME = os.getenv('MODEL_NAME', 'gemini-2.5-flash')  # Default to a known supported model id
 
 # Validate essential environment variables
 if not GEMINI_API_KEY:
     logging.error("GEMINI_API_KEY is not set in environment variables.")
-    # In a real app, you might want to exit or raise an error
 if not SENDER_EMAIL or not SENDER_PASSWORD:
     logging.warning("GMAIL_APP_EMAIL or GMAIL_APP_PASSWORD not set. Email functionality might be disabled.")
 
 # Configure the Gemini API with your key
 try:
     genai.configure(api_key=GEMINI_API_KEY)
+    logging.info("Configured generative API.")
 except Exception as e:
     logging.critical(f"Error configuring Gemini API: {e}. Exiting.", exc_info=True)
-    # In production, you might want to exit or raise a more specific error
-    exit(1) # Exit if API is critical for app function
+    exit(1)
 
-db = Database() # Initialize your database connection
+db = Database()  # Initialize your database connection
 
-# UPDATED SYSTEM_PROMPT to ensure consistent JSON output for all responses
+# System prompt
 SYSTEM_PROMPT = """You are CookBot, a friendly and knowledgeable cooking assistant. Your role is to help users with all things cooking-related.
 
 Guidelines:
@@ -77,103 +77,149 @@ Guidelines:
 
 Remember: You're here to make cooking accessible and fun for everyone!"""
 
-# UPDATED generation_config: Ensure response_mime_type is "application/json"
 generation_config = {
     "temperature": 0.7,
     "top_p": 1,
     "top_k": 1,
     "max_output_tokens": 2048,
-    "response_mime_type": "application/json" 
+    "response_mime_type": "application/json"
 }
 
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash-latest",
-    generation_config=generation_config
-)
+def try_list_models_safe():
+    """Attempt to list models and return a short summary for logs (safe wrapper)."""
+    try:
+        models = genai.list_models()
+        # models format depends on SDK; try to extract names
+        model_names = []
+        for m in models:
+            try:
+                # m might be a dict-like or object
+                name = getattr(m, "name", None) or m.get("name") if isinstance(m, dict) else str(m)
+            except Exception:
+                name = str(m)
+            model_names.append(name)
+        return model_names
+    except Exception as e:
+        logging.error("Failed to list models: %s", e, exc_info=True)
+        return None
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
         data = request.get_json()
-        user_message = data.get('message', '').strip() # Strip whitespace
+        user_message = (data.get('message', '') or '').strip()
         session_id = data.get('session_id', str(uuid.uuid4()))
         
-        if not user_message: # Check after stripping
+        if not user_message:
             return jsonify({'error': 'Message cannot be empty'}), 400
         
         conversation_data = db.get_conversation(session_id)
         history = []
         if conversation_data and 'history' in conversation_data:
-            # Map saved history (assistant, user) to Gemini roles (model, user)
             for message in conversation_data['history']:
                 if message['role'] == 'system':
-                    continue # System prompt is handled separately
+                    continue
                 history.append({
                     "role": "model" if message['role'] == 'assistant' else message['role'],
                     "parts": [{"text": message['content']}]
                 })
 
-        # Prepend the system prompt to the history for each session interaction
-        # This ensures the model always has the system prompt in context
         full_history_for_gemini = [{"role": "user", "parts": [{"text": SYSTEM_PROMPT}]}] + history
 
-        chat_session = model.start_chat(history=full_history_for_gemini)
-        
-        response = chat_session.send_message(user_message)
-        
-        ai_response_text = response.text
-        
-        # Now, ai_response_text should ALWAYS be a valid JSON string
+        # Lazily create/instantiate the model and start the chat session.
+        try:
+            logging.info("Attempting to create GenerativeModel with id=%s", MODEL_NAME)
+            model = genai.GenerativeModel(
+                model_name=MODEL_NAME,
+                generation_config=generation_config
+            )
+        except NotFound as nf:
+            # Model not found for this API version / account
+            logging.error("Model %s not found: %s", MODEL_NAME, nf, exc_info=True)
+            available = try_list_models_safe()
+            if available:
+                logging.info("Available models: %s", available)
+            return jsonify({
+                'error': f"Configured model '{MODEL_NAME}' not available for this API/account.",
+                'available_models': available or "unavailable - check logs"
+            }), 500
+        except Exception as e:
+            logging.error("Error creating GenerativeModel: %s", e, exc_info=True)
+            available = try_list_models_safe()
+            return jsonify({
+                'error': "Failed to initialize model. See server logs for details.",
+                'available_models': available or "unavailable - check logs"
+            }), 500
+
+        try:
+            chat_session = model.start_chat(history=full_history_for_gemini)
+        except Exception as e:
+            logging.error("Failed to start chat session: %s", e, exc_info=True)
+            return jsonify({'error': 'Failed to start chat session. Check model compatibility and SDK version.'}), 500
+
+        try:
+            response = chat_session.send_message(user_message)
+        except NotFound as nf:
+            logging.error("Model generate call NotFound: %s", nf, exc_info=True)
+            available = try_list_models_safe()
+            return jsonify({
+                'error': f"Model '{MODEL_NAME}' cannot process generateContent/chat with current API.",
+                'available_models': available or "unavailable - check logs"
+            }), 500
+        except Exception as e:
+            logging.error("Error from chat_session.send_message: %s", e, exc_info=True)
+            return jsonify({'error': 'Error generating response from model.'}), 500
+
+        # The SDK's response object shape may vary; using .text as before
+        ai_response_text = getattr(response, "text", None)
+        if ai_response_text is None:
+            # Try alternative properties (defensive)
+            try:
+                ai_response_text = json.dumps(response) if not isinstance(response, str) else str(response)
+            except Exception:
+                ai_response_text = str(response)
+
+        # Try to parse the response as JSON (your system expects JSON)
         try:
             parsed_response = json.loads(ai_response_text)
-            
-            # Append current turn to history for saving
             messages_to_save = []
-            # No need to append SYSTEM_PROMPT here as it's part of the conversation setup
             messages_to_save.extend([
                 {"role": "user", "content": user_message},
-                {"role": "assistant", "content": ai_response_text} # Save the raw JSON string
+                {"role": "assistant", "content": ai_response_text}
             ])
-            
-            # Prepend existing history from DB to the new messages to save
             if conversation_data and 'history' in conversation_data:
                 messages_to_save = conversation_data['history'] + messages_to_save
 
             db.save_conversation(session_id, messages_to_save)
-            
-            # Check the 'type' field to determine if it's a recipe or general text
+
             if isinstance(parsed_response, dict) and parsed_response.get('type') == 'recipe':
                 return jsonify({
-                    'response': ai_response_text, # Still return the raw JSON string
+                    'response': ai_response_text,
                     'session_id': session_id,
                     'is_recipe': True,
-                    'recipe_data': parsed_response # Return the parsed object directly
+                    'recipe_data': parsed_response
                 })
             elif isinstance(parsed_response, dict) and parsed_response.get('type') == 'text':
                 return jsonify({
-                    'response': parsed_response.get('content', 'An unexpected text response occurred.'), # Extract the content
+                    'response': parsed_response.get('content', 'An unexpected text response occurred.'),
                     'session_id': session_id,
                     'is_recipe': False
                 })
             else:
-                # Fallback if the JSON structure doesn't match expected types
-                logging.warning(f"Unexpected JSON format from AI: {ai_response_text}")
+                logging.warning("Unexpected JSON format from AI: %s", ai_response_text)
                 return jsonify({
                     'response': "I received an unexpected response format, but I'm here to help! Could you please rephrase your request?",
                     'session_id': session_id,
                     'is_recipe': False
                 })
-
         except json.JSONDecodeError:
-            # This block should ideally not be hit if response_mime_type is 'application/json'
-            # and the model consistently outputs valid JSON based on the system prompt.
-            logging.error(f"AI response was not valid JSON despite mime type setting: {ai_response_text}")
+            logging.error("AI response was not valid JSON despite mime type setting: %s", ai_response_text)
             return jsonify({
                 'response': "I'm having a little trouble understanding. Could you please try asking again?",
                 'session_id': session_id,
                 'is_recipe': False
             })
-            
+
     except Exception as e:
         logging.error(f"Chat endpoint error: {e}", exc_info=True)
         return jsonify({'error': 'An internal server error occurred processing your request. Please try again later.'}), 500
@@ -193,7 +239,7 @@ def handle_contact_form():
             logging.warning("Email sender credentials not configured. Contact form emails cannot be sent.")
             return jsonify({'error': 'Email service not configured on the server.'}), 500
 
-        email_content = f"""\
+        email_content = f"""\ 
 From: {SENDER_EMAIL}
 To: {RECEIVER_EMAIL}
 Subject: Chef Byte Contact Form: {name}
@@ -260,20 +306,12 @@ def get_my_recipes():
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    # Simple health check, can be extended to check DB connection etc.
     try:
-        # Example: Try to get a dummy value from DB to check connection
-        # db.check_connection() # Assuming such a method exists in Database class
         return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()}), 200
     except Exception as e:
         logging.error(f"Health check failed: {e}", exc_info=True)
         return jsonify({'status': 'unhealthy', 'error': str(e), 'timestamp': datetime.now().isoformat()}), 500
 
-
 if __name__ == '__main__':
-    # Use environment variable for port, default to 5000
     port = int(os.environ.get('PORT', 5000))
-    # NEVER use debug=True in production
-    app.run(host='0.0.0.0', port=port, debug=False) 
-    # For production, use a WSGI server like Gunicorn:
-    # gunicorn -w 4 -b 0.0.0.0:5000 app:app 
+    app.run(host='0.0.0.0', port=port, debug=False)
