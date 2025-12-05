@@ -1,27 +1,28 @@
+// frontend/src/services/api.ts
 import axios from 'axios';
 
-// Access the environment variable
-// For Vite:
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Use Vite env var (set in Netlify). Fallback to localhost for dev.
+const RAW_BASE =
+  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '';
 
-// For Create React App (CRA):
-// const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+const normalizeBase = (b: string) => (b ? (b.endsWith('/') ? b.slice(0, -1) : b) : '');
+const BASE = normalizeBase(RAW_BASE) || 'http://localhost:5000';
 
-// Fallback for development if the variable isn't set (though it should be in .env)
-if (!API_BASE_URL) {
-  console.warn("API_BASE_URL is not set. Falling back to localhost.");
-  // Consider throwing an error or having a clear fallback for development
-  // For example, if you explicitly want to use localhost during dev:
-  // const API_BASE_URL = "http://127.0.0.1:5000/api";
-  // For production, you'd want this to be set strictly.
+if (!RAW_BASE) {
+  console.warn('VITE_API_BASE_URL / VITE_API_URL not set; falling back to http://localhost:5000');
 }
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: BASE,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
 });
+
+// Helper ensures `/api` prefix
+const apiPath = (path: string) => {
+  const cleaned = path.startsWith('/') ? path : `/${path}`;
+  return `/api${cleaned}`; // -> /api/chat etc.
+};
 
 export interface ChatResponse {
   response: string;
@@ -30,97 +31,46 @@ export interface ChatResponse {
   recipe_data?: any;
 }
 
-export interface SaveRecipeResponse {
-  success: boolean;
-  recipe_id: string;
-  message: string;
-}
-
-export interface Recipe {
-  recipe_id: string;
-  session_id: string;
-  recipe_data: any;
-  saved_at: string;
-}
-
-export interface RecipesResponse {
-  recipes: Recipe[];
-}
-
-export interface ContactFormData {
-  name: string;
-  email: string;
-  message: string;
-}
-
-export interface ContactFormResponse {
-  success: boolean;
-  message: string;
-}
-
 export const chatAPI = {
-  async sendMessage(message: string, sessionId: string): Promise<ChatResponse> {
+  async sendMessage(message: string, sessionId?: string): Promise<ChatResponse> {
+    const url = apiPath('/chat'); // becomes /api/chat
     try {
-      const response = await api.post('/chat', {
-        message,
-        session_id: sessionId,
-      });
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data?.error) {
-        throw new Error(error.response.data.error);
+      const res = await api.post(url, { message, session_id: sessionId });
+      return res.data as ChatResponse;
+    } catch (err: any) {
+      if (err.response) {
+        const serverMsg =
+          err.response.data?.error || JSON.stringify(err.response.data) || err.message;
+        throw new Error(`Server ${err.response.status}: ${serverMsg}`);
+      } else if (err.request) {
+        throw new Error('No response from server (possible CORS or network issue).');
+      } else {
+        throw new Error(err.message || 'Failed to send message.');
       }
-      throw new Error('Failed to send message. Please check your connection and try again.');
     }
   },
 
-  async saveRecipe(sessionId: string, recipeData: any): Promise<SaveRecipeResponse> {
-    try {
-      const response = await api.post('/save_recipe', {
-        session_id: sessionId,
-        recipe_data: recipeData,
-      });
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data?.error) {
-        throw new Error(error.response.data.error);
-      }
-      throw new Error('Failed to save recipe. Please try again.');
-    }
+  async saveRecipe(sessionId: string, recipeData: any) {
+    const url = apiPath('/save_recipe');
+    const res = await api.post(url, { session_id: sessionId, recipe_data: recipeData });
+    return res.data;
   },
 
-  async getMyRecipes(sessionId: string): Promise<RecipesResponse> {
-    try {
-      const response = await api.get('/my_recipes', {
-        params: { session_id: sessionId },
-      });
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data?.error) {
-        throw new Error(error.response.data.error);
-      }
-      throw new Error('Failed to load recipes. Please try again.');
-    }
+  async getMyRecipes(sessionId: string) {
+    const url = apiPath('/my_recipes');
+    const res = await api.get(url, { params: { session_id: sessionId } });
+    return res.data;
   },
 
-  async sendContactMessage(formData: ContactFormData): Promise<ContactFormResponse> {
-    try {
-      const response = await api.post('/contact', formData);
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data?.error) {
-        throw new Error(error.response.data.error);
-      }
-      throw new Error('Failed to send message. Please check your connection and try again.');
-    }
+  async sendContactMessage(formData: { name: string; email: string; message: string }) {
+    const url = apiPath('/contact');
+    const res = await api.post(url, formData);
+    return res.data;
   },
 
-  async healthCheck(): Promise<any> {
-    try {
-      const response = await api.get('/health');
-      return response.data;
-    } catch (error) {
-      throw new Error('Backend server is not responding.');
-    }
-  },
+  async healthCheck() {
+    const url = apiPath('/health');
+    const res = await api.get(url);
+    return res.data;
+  }
 };
