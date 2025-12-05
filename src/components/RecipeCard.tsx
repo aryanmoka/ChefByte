@@ -1,7 +1,6 @@
 // frontend/src/components/RecipeCard.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, Users, Copy, Check, Bookmark, BookmarkCheck, Loader2 } from 'lucide-react';
-import { chatAPI } from '../services/api';
+import { Clock, Users, Copy, Check } from 'lucide-react';
 
 interface Recipe {
   title: string;
@@ -15,13 +14,11 @@ interface Recipe {
 
 interface RecipeCardProps {
   recipe: Recipe;
-  sessionId: string;
+  // sessionId removed — saving removed to keep card minimal and focused
 }
 
-const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
+const RecipeCard: React.FC<RecipeCardProps> = ({ recipe }) => {
   const [copied, setCopied] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // mounted flag used for safe setState and to trigger CSS mount animation
@@ -42,7 +39,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
 
     // schedule rendering heavy content during idle time (or fallback)
     if ('requestIdleCallback' in window) {
-      // @ts-ignore - requestIdleCallback exists on window
+      // @ts-ignore
       idleCallbackId.current = (window as any).requestIdleCallback(
         () => {
           if (mountedRef.current) setShowFullContent(true);
@@ -71,7 +68,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
     };
   }, []);
 
-  const scheduleClearMessage = (timeout = 2500) => {
+  const scheduleClearMessage = (timeout = 2200) => {
     if (clearTimer.current) window.clearTimeout(clearTimer.current);
     clearTimer.current = window.setTimeout(() => {
       if (mountedRef.current) {
@@ -106,7 +103,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
       scheduleClearMessage();
       window.setTimeout(() => {
         if (mountedRef.current) setCopied(false);
-      }, 2000);
+      }, 1600);
     } catch (err) {
       console.error('Failed to copy ingredients:', err);
       if (!mountedRef.current) return;
@@ -115,102 +112,48 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
     }
   };
 
-  // Save recipe via API (defensive and shows feedback)
-  const saveRecipe = async () => {
-    if (!sessionId) {
-      setStatusMessage('Unable to save: missing session');
-      scheduleClearMessage();
-      return;
-    }
-    if (saved) {
-      setStatusMessage('Recipe already saved');
-      scheduleClearMessage();
-      return;
-    }
-
-    setSaving(true);
-    setStatusMessage(null);
-
-    try {
-      const res = await chatAPI.saveRecipe(sessionId, recipe);
-      const success = res?.success ?? false;
-      const serverMsg = res?.message ?? null;
-
-      if (success) {
-        if (!mountedRef.current) return;
-        setSaved(true);
-        setStatusMessage('Recipe saved');
-        scheduleClearMessage();
-      } else {
-        throw new Error(serverMsg || 'Save failed');
-      }
-    } catch (err: any) {
-      console.error('Failed to save recipe:', err);
-      if (!mountedRef.current) return;
-      setStatusMessage(typeof err === 'string' ? err : err?.message ?? 'Failed to save recipe');
-      scheduleClearMessage();
-    } finally {
-      if (mountedRef.current) setSaving(false);
-    }
-  };
-
   return (
     <article
-      className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+      className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden max-w-full"
       aria-labelledby="recipe-title"
     >
       {/* Header */}
       <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 sm:p-6">
         <div className="flex justify-between items-start gap-4">
           <div className="flex-1 min-w-0">
-            <h3 id="recipe-title" className="text-xl sm:text-2xl font-bold mb-1 truncate">
+            <h3 id="recipe-title" className="text-lg sm:text-xl md:text-2xl font-bold mb-1 truncate">
               {recipe.title}
             </h3>
             {recipe.description && (
-              <p className="text-orange-100 text-sm truncate">{recipe.description}</p>
+              <p className="text-orange-100 text-sm leading-snug line-clamp-2">{recipe.description}</p>
             )}
           </div>
 
-          {/* Save button */}
-          <div className="ml-2 flex-shrink-0">
-            <button
-              onClick={saveRecipe}
-              disabled={saving || saved}
-              aria-pressed={saved}
-              aria-label={saved ? 'Recipe saved' : 'Save recipe'}
-              className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
-            >
-              {saving ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : saved ? (
-                <BookmarkCheck className="h-5 w-5" />
-              ) : (
-                <Bookmark className="h-5 w-5" />
-              )}
-            </button>
+          {/* Minimal meta icons */}
+          <div className="ml-2 flex-shrink-0 flex items-center gap-3 text-sm">
+            { (recipe.prep_time || recipe.cook_time || recipe.servings) && (
+              <div className="flex items-center gap-3 text-xs sm:text-sm text-white/90">
+                {recipe.prep_time && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-4 w-4" />
+                    <span>Prep: {recipe.prep_time}</span>
+                  </div>
+                )}
+                {recipe.cook_time && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-4 w-4" />
+                    <span>Cook: {recipe.cook_time}</span>
+                  </div>
+                )}
+                {recipe.servings && (
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4" />
+                    <span>{recipe.servings}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* Meta */}
-        <div className="flex flex-wrap gap-3 mt-3 text-sm items-center">
-          {recipe.prep_time && (
-            <div className="flex items-center gap-1 text-sm">
-              <Clock className="h-4 w-4" />
-              <span>Prep: {recipe.prep_time}</span>
-            </div>
-          )}
-          {recipe.cook_time && (
-            <div className="flex items-center gap-1 text-sm">
-              <Clock className="h-4 w-4" />
-              <span>Cook: {recipe.cook_time}</span>
-            </div>
-          )}
-          {recipe.servings && (
-            <div className="flex items-center gap-1 text-sm">
-              <Users className="h-4 w-4" />
-              <span>Serves: {recipe.servings}</span>
-            </div>
-          )}
         </div>
       </div>
 
@@ -224,18 +167,18 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
         {/* Entrance wrapper: triggers CSS animation via [data-mounted="true"] */}
         <div className="recipe-enter-inner" data-mounted={mounted ? 'true' : 'false'}>
           {/* Ingredients */}
-          <div className="mb-6">
+          <div className="mb-5">
             <div className="flex items-center justify-between mb-3 gap-3">
-              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Ingredients</h4>
+              <h4 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Ingredients</h4>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={copyIngredients}
-                  className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md transition-colors duration-200"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md transition-colors duration-150"
                   aria-label={copied ? 'Ingredients copied' : 'Copy ingredients'}
                 >
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  <span>{copied ? 'Copied!' : 'Copy'}</span>
+                  <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
                 </button>
                 {statusMessage && (
                   <div className="text-xs text-gray-500 dark:text-gray-400 ml-2 hidden sm:block">
@@ -248,18 +191,15 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
             {/* Render minimal skeleton first, then full content when idle */}
             {!showFullContent ? (
               <div className="space-y-2">
-                {recipe.ingredients.slice(0, 3).map((ing, i) => (
-                  <div key={i} className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-full animate-pulse" />
+                {recipe.ingredients.slice(0, 3).map((_, i) => (
+                  <div key={i} className="h-3 bg-gray-100 dark:bg-gray-700 rounded w-full animate-pulse" />
                 ))}
                 {recipe.ingredients.length > 3 && <div className="text-xs text-gray-400 mt-2">Loading ingredients…</div>}
               </div>
             ) : (
               <ul className="space-y-2">
                 {recipe.ingredients.map((ingredient, index) => (
-                  <li
-                    key={index}
-                    className="flex items-start gap-2 text-gray-700 dark:text-gray-300"
-                  >
+                  <li key={index} className="flex items-start gap-2 text-gray-700 dark:text-gray-300">
                     <span className="text-orange-500 mt-1">•</span>
                     <span className="leading-relaxed break-words">{ingredient}</span>
                   </li>
@@ -270,7 +210,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
 
           {/* Instructions */}
           <div>
-            <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Instructions</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3">Instructions</h4>
 
             {!showFullContent ? (
               <div className="space-y-3">
@@ -282,10 +222,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
             ) : (
               <ol className="space-y-3 list-none p-0 m-0">
                 {recipe.instructions.map((instruction, index) => (
-                  <li
-                    key={index}
-                    className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
-                  >
+                  <li key={index} className="flex items-start gap-3 text-gray-700 dark:text-gray-300">
                     <span className="flex-shrink-0 w-6 h-6 bg-orange-500 text-white text-sm font-medium rounded-full flex items-center justify-center">
                       {index + 1}
                     </span>

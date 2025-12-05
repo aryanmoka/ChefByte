@@ -5,7 +5,8 @@ const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-gray-900 dark:bg-gray-950 text-white py-10 mt-12 transition-colors duration-300 w-full overflow-hidden">
+    <footer className="bg-gray-900 dark:bg-gray-950 text-white py-10 transition-colors duration-300 w-full overflow-hidden">
+
       <div className="max-w-6xl mx-auto px-4">
 
         {/* Grid */}
@@ -50,7 +51,7 @@ const Footer: React.FC = () => {
         </div>
 
         {/* Divider */}
-        <div className="border-t border-gray-800 mt-10 pt-6 text-center text-gray-500 text-sm">
+        <div className="border-t border-gray-800 pt-6 text-center text-gray-500 text-sm">
           © {currentYear} <span className="text-amber-400 font-medium">Chef Byte</span> · All rights reserved.
         </div>
       </div>

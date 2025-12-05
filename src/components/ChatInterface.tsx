@@ -1,4 +1,4 @@
-// ChatInterface.tsx (UPDATED)
+// frontend/src/components/ChatInterface.tsx (updated)
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, RefreshCcw, Save } from 'lucide-react';
 import MessageBubble from './MessageBubble';
@@ -58,14 +58,14 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
     const el = messagesContainerRef.current;
     if (!el) return;
     // ensure helpful CSS for touch scrolling
-    el.style.webkitOverflowScrolling = 'touch'; // eslint-disable-line @typescript-eslint/ban-ts-comment
-    el.style.setProperty('-webkit-overflow-scrolling', 'touch'); // defensive
+    // @ts-ignore - non-standard properties handled defensively
+    (el as any).style.webkitOverflowScrolling = 'touch';
+    el.style.setProperty('-webkit-overflow-scrolling', 'touch');
     el.style.touchAction = 'pan-y';
   }, []);
 
   // scroll to bottom helper (use smooth but fallback gracefully)
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    // prefer scrollIntoView on the anchor ref; if it fails, scroll the container
     try {
       messagesEndRef.current?.scrollIntoView({ behavior });
     } catch {
@@ -87,7 +87,7 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
       const t = setTimeout(() => handleSendMessage(initialPrompt), 180);
       return () => clearTimeout(t);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPrompt]);
 
   // push helper
@@ -106,14 +106,12 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
 
     const step = () => {
       if (!running) return;
-      // increment by a few characters (randomised slightly for natural feel)
       const stepSize = Math.max(1, Math.floor(1 + Math.random() * 3));
       idx = Math.min(total, idx + stepSize);
       typingBuffers.current[placeholderId] = fullText.slice(0, idx);
 
       const now = performance.now();
       if (now - lastUpdate >= throttleMs || idx === total) {
-        // commit to messages state - only replace the placeholder message content
         setMessages(prev =>
           prev.map(m => (m.id === placeholderId ? { ...m, content: typingBuffers.current[placeholderId] } : m))
         );
@@ -121,7 +119,6 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
       }
 
       if (idx < total) {
-        // schedule next frame via setTimeout to avoid hammering RAF for long texts
         window.setTimeout(step, Math.max(8, throttleMs / 2));
       } else {
         running = false;
@@ -176,7 +173,6 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
       const stopAnim = animateAIText(aiPlaceholderId, respText, 50);
 
       // wait for "animation" to complete: estimate duration but also wait for final commit
-      // use a promise that resolves when the buffer equals full text
       await new Promise<void>((resolve) => {
         const maxWait = Math.min(Math.max(respText.length * 18, 300), 8000);
         const poll = setInterval(() => {
@@ -244,12 +240,13 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
   };
 
   return (
-    <div className="max-w-4xl mx-auto h-[calc(100vh-120px)] flex flex-col bg-gray-100 dark:bg-gray-900 rounded-lg shadow-xl">
+    // Important: turn this wrapper into a flexible layout that fills available vertical space
+    // App.tsx should render this inside a parent that provides vertical space (e.g. main with flex-1)
+    <div className="flex flex-col flex-1 w-full max-w-4xl mx-auto min-h-0 bg-gray-100 dark:bg-gray-900 rounded-lg shadow-xl">
       {/* Messages Display Area */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-6 space-y-6"
-        // Make sure the container receives touch events and does not block scroll
+        className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0"
         role="log"
         aria-live="polite"
       >
@@ -265,15 +262,15 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
             <MessageBubble message={message} />
 
             {message.isRecipe && message.recipeData && (
-             <div className="mt-4 flex items-start gap-3 recipe-enter-wrapper">
-               <RecipeCard recipe={message.recipeData} sessionId={sessionId} />
-                <div className="flex flex-col gap-2">
-                 <button
-                   onClick={() => handleSaveRecipe(message.recipeData)}
-                   title="Save recipe"
-                   className="inline-flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md"
+              <div className="mt-4 flex flex-col lg:flex-row items-start gap-3 recipe-enter-wrapper">
+                <RecipeCard recipe={message.recipeData} sessionId={sessionId} />
+                <div className="flex-shrink-0 flex flex-col gap-2">
+                  <button
+                    onClick={() => handleSaveRecipe(message.recipeData)}
+                    title="Save recipe"
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md"
                   >
-                  <Save className="w-4 h-4" /> Save
+                    <Save className="w-4 h-4" /> Save
                   </button>
                 </div>
               </div>
@@ -306,36 +303,53 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
 
       {/* Message Input Area */}
       <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <div className="flex space-x-4 items-end">
-          <div className="flex-1 relative">
-            <label htmlFor="chat-input" className="sr-only">Message</label>
-            <textarea
-              id="chat-input"
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask me about cooking, recipes, or ingredients..."
-              rows={1}
-              className="w-full resize-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-              disabled={isLoading}
-              aria-label="Chat input"
-            />
-            <div className="text-xs text-gray-400 mt-1">Press Enter to send, Shift+Enter for a new line.</div>
-          </div>
+  <div className="flex items-center gap-3">
+    
+    <div className="flex-1">
+      <textarea
+        id="chat-input"
+        ref={inputRef}
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Ask me about cooking..."
+        rows={1}
+        className="
+          w-full resize-none 
+          px-4 py-3 
+          h-12     /* <<< FIXED HEIGHT */
+          border border-gray-300 dark:border-gray-600
+          rounded-lg
+          focus:ring-2 focus:ring-emerald-500 focus:border-transparent
+          bg-white dark:bg-gray-700 
+          text-gray-900 dark:text-white
+          placeholder-gray-500 dark:placeholder-gray-400
+        "
+        disabled={isLoading}
+      />
+    </div>
 
-          <div className="flex items-center gap-2">
+          {/* <div className="flex items-center gap-2"> */}
             <button
-              onClick={() => handleSendMessage()}
-              disabled={!inputValue.trim() || isLoading}
-              className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2 disabled:cursor-not-allowed"
-              aria-label="Send message"
-            >
-              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-            </button>
+      onClick={() => handleSendMessage()}
+      disabled={!inputValue.trim() || isLoading}
+      className="
+        h-12    /* <<< SAME FIXED HEIGHT */
+        w-12    /* square button */
+        flex items-center justify-center
+        bg-emerald-600 hover:bg-emerald-700 
+        disabled:bg-gray-300 dark:disabled:bg-gray-600
+        text-white rounded-lg 
+        transition-colors duration-200
+        disabled:cursor-not-allowed
+      "
+      aria-label="Send message"
+    >
+      {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+    </button>
           </div>
         </div>
       </div>
-    </div>
+    // </div>
   );
 }
