@@ -6,7 +6,7 @@
 
 🔗 Live Demo
 
-👉 [Try CookBot Here](https://cookingchatbot.netlify.app/)
+👉 [Try CookBot Here]((https://aichefbyte.netlify.app/))
 
 ### Features
 
