@@ -138,9 +138,14 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe }) => {
       <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 sm:p-6">
         <div className="flex justify-between items-start gap-4">
           <div className="flex-1 min-w-0">
-            <h3 id="recipe-title" className="text-lg sm:text-xl md:text-2xl font-bold mb-1 truncate">
+            <h3
+              id="recipe-title"
+              className="text-lg sm:text-xl md:text-2xl font-bold mb-1 leading-tight break-words"
+              title={recipe.title}
+            >
               {recipe.title}
             </h3>
+
             {recipe.description && (
               <p className="text-orange-100 text-sm leading-snug line-clamp-2">
                 {recipe.description}
