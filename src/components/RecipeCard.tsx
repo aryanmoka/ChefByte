@@ -135,47 +135,52 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe }) => {
       ) : null}
 
       {/* Header */}
-      <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 sm:p-6">
-        <div className="flex justify-between items-start gap-4">
-          <div className="flex-1 min-w-0">
-            <h3
-              id="recipe-title"
-              className="text-lg sm:text-xl md:text-2xl font-bold mb-1 leading-tight break-words"
-              title={recipe.title}
-            >
-              {recipe.title}
-            </h3>
+      {/* Header */}
+<div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 sm:p-6">
+  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+    <div className="flex-1 min-w-0">
+      <h3
+        id="recipe-title"
+        className="text-lg sm:text-xl md:text-2xl font-bold mb-1 leading-tight whitespace-normal break-normal max-w-full"
+        title={recipe.title}
+      >
+        {recipe.title}
+      </h3>
 
-            {recipe.description && (
-              <p className="text-orange-100 text-sm leading-snug line-clamp-2">
-                {recipe.description}
-              </p>
-            )}
-          </div>
+      {recipe.description && (
+        <p className="text-orange-100 text-sm leading-snug max-w-full line-clamp-2">
+          {recipe.description}
+        </p>
+      )}
+    </div>
 
-          <div className="ml-2 flex-shrink-0 flex items-center gap-3 text-sm">
-            {(recipe.prep_time || recipe.cook_time || recipe.servings) && (
-              <div className="flex items-center gap-3 text-xs sm:text-sm text-white/95">
-                {recipe.prep_time && (
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" /> <span>Prep: {recipe.prep_time}</span>
-                  </div>
-                )}
-                {recipe.cook_time && (
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" /> <span>Cook: {recipe.cook_time}</span>
-                  </div>
-                )}
-                {recipe.servings && (
-                  <div className="flex items-center gap-1">
-                    <Users className="h-4 w-4" /> <span>{recipe.servings}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+    <div className="ml-0 sm:ml-2 mt-3 sm:mt-0 flex items-center gap-3 text-sm">
+      {(recipe.prep_time || recipe.cook_time || recipe.servings) && (
+        <div className="flex items-center gap-3 text-xs sm:text-sm text-white/95 flex-wrap">
+          {recipe.prep_time && (
+            <div className="flex items-center gap-1">
+              <Clock className="h-4 w-4" />
+              <span>Prep: {recipe.prep_time}</span>
+            </div>
+          )}
+          {recipe.cook_time && (
+            <div className="flex items-center gap-1">
+              <Clock className="h-4 w-4" />
+              <span>Cook: {recipe.cook_time}</span>
+            </div>
+          )}
+          {recipe.servings && (
+            <div className="flex items-center gap-1">
+              <Users className="h-4 w-4" />
+              <span>{recipe.servings}</span>
+            </div>
+          )}
         </div>
-      </div>
+      )}
+    </div>
+  </div>
+</div>
+
 
       {/* Body */}
       <div className="p-4 sm:p-6">
