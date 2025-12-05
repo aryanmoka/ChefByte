@@ -32,7 +32,8 @@ app = Flask(__name__)
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173",  # local dev
-    "https://cookingchatbot.netlify.app",
+    "https://aichefbyte.netlify.app",
+    "https://chefbyte.onrender.com",
 ]
 CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
 
