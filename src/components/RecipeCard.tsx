@@ -23,13 +23,50 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const mountedRef = useRef(true);
+
+  // mounted flag used for safe setState and to trigger CSS mount animation
+  const mountedRef = useRef(false);
+  const [mounted, setMounted] = useState(false);
+
+  // defer rendering of large lists until idle to avoid blocking initial paint/animation
+  const [showFullContent, setShowFullContent] = useState(false);
+  const idleCallbackId = useRef<number | null>(null);
   const clearTimer = useRef<number | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
+    // trigger mount animation on next frame so CSS transitions run
+    const raf = window.requestAnimationFrame(() => {
+      setMounted(true);
+    });
+
+    // schedule rendering heavy content during idle time (or fallback)
+    if ('requestIdleCallback' in window) {
+      // @ts-ignore - requestIdleCallback exists on window
+      idleCallbackId.current = (window as any).requestIdleCallback(
+        () => {
+          if (mountedRef.current) setShowFullContent(true);
+        },
+        { timeout: 300 }
+      );
+    } else {
+      // fallback
+      const t = window.setTimeout(() => {
+        if (mountedRef.current) setShowFullContent(true);
+      }, 150);
+      idleCallbackId.current = t;
+    }
+
     return () => {
       mountedRef.current = false;
+      cancelAnimationFrame(raf);
+      if (idleCallbackId.current != null) {
+        if ('cancelIdleCallback' in window) {
+          (window as any).cancelIdleCallback(idleCallbackId.current);
+        } else {
+          window.clearTimeout(idleCallbackId.current);
+        }
+      }
       if (clearTimer.current) window.clearTimeout(clearTimer.current);
     };
   }, []);
@@ -52,10 +89,9 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(ingredientsList);
       } else {
-        // fallback for older browsers
         const textarea = document.createElement('textarea');
         textarea.value = ingredientsList;
-        textarea.style.position = 'fixed'; // avoid reflow
+        textarea.style.position = 'fixed';
         textarea.style.left = '-9999px';
         document.body.appendChild(textarea);
         textarea.select();
@@ -96,9 +132,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
     setStatusMessage(null);
 
     try {
-      // Expect chatAPI.saveRecipe to return { success: boolean, message?: string }
       const res = await chatAPI.saveRecipe(sessionId, recipe);
-
       const success = res?.success ?? false;
       const serverMsg = res?.message ?? null;
 
@@ -187,58 +221,80 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, sessionId }) => {
           {statusMessage}
         </div>
 
-        {/* Ingredients */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-3 gap-3">
-            <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Ingredients</h4>
+        {/* Entrance wrapper: triggers CSS animation via [data-mounted="true"] */}
+        <div className="recipe-enter-inner" data-mounted={mounted ? 'true' : 'false'}>
+          {/* Ingredients */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3 gap-3">
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Ingredients</h4>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={copyIngredients}
-                className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md transition-colors duration-200"
-                aria-label={copied ? 'Ingredients copied' : 'Copy ingredients'}
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                <span>{copied ? 'Copied!' : 'Copy'}</span>
-              </button>
-              {/* small visual feedback */}
-              {statusMessage && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 ml-2 hidden sm:block">
-                  {statusMessage}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyIngredients}
+                  className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md transition-colors duration-200"
+                  aria-label={copied ? 'Ingredients copied' : 'Copy ingredients'}
+                >
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  <span>{copied ? 'Copied!' : 'Copy'}</span>
+                </button>
+                {statusMessage && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 ml-2 hidden sm:block">
+                    {statusMessage}
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Render minimal skeleton first, then full content when idle */}
+            {!showFullContent ? (
+              <div className="space-y-2">
+                {recipe.ingredients.slice(0, 3).map((ing, i) => (
+                  <div key={i} className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-full animate-pulse" />
+                ))}
+                {recipe.ingredients.length > 3 && <div className="text-xs text-gray-400 mt-2">Loading ingredients…</div>}
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {recipe.ingredients.map((ingredient, index) => (
+                  <li
+                    key={index}
+                    className="flex items-start gap-2 text-gray-700 dark:text-gray-300"
+                  >
+                    <span className="text-orange-500 mt-1">•</span>
+                    <span className="leading-relaxed break-words">{ingredient}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
-          <ul className="space-y-2">
-            {recipe.ingredients.map((ingredient, index) => (
-              <li
-                key={index}
-                className="flex items-start gap-2 text-gray-700 dark:text-gray-300"
-              >
-                <span className="text-orange-500 mt-1">•</span>
-                <span className="leading-relaxed break-words">{ingredient}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+          {/* Instructions */}
+          <div>
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Instructions</h4>
 
-        {/* Instructions */}
-        <div>
-          <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Instructions</h4>
-          <ol className="space-y-3 list-none p-0 m-0">
-            {recipe.instructions.map((instruction, index) => (
-              <li
-                key={index}
-                className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
-              >
-                <span className="flex-shrink-0 w-6 h-6 bg-orange-500 text-white text-sm font-medium rounded-full flex items-center justify-center">
-                  {index + 1}
-                </span>
-                <span className="leading-relaxed">{instruction}</span>
-              </li>
-            ))}
-          </ol>
+            {!showFullContent ? (
+              <div className="space-y-3">
+                {[0, 1].map(i => (
+                  <div key={i} className="h-3 bg-gray-100 dark:bg-gray-700 rounded w-full animate-pulse" />
+                ))}
+                <div className="text-xs text-gray-400 mt-2">Preparing instructions…</div>
+              </div>
+            ) : (
+              <ol className="space-y-3 list-none p-0 m-0">
+                {recipe.instructions.map((instruction, index) => (
+                  <li
+                    key={index}
+                    className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
+                  >
+                    <span className="flex-shrink-0 w-6 h-6 bg-orange-500 text-white text-sm font-medium rounded-full flex items-center justify-center">
+                      {index + 1}
+                    </span>
+                    <span className="leading-relaxed">{instruction}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </div>
       </div>
     </article>

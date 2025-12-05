@@ -13,3 +13,74 @@ html, body {
 /* optional: hide horizontal scrollbar on mobile */
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Enable smooth native scrolling on mobile for the messages container */
+.flex-1.overflow-y-auto {
+  -webkit-overflow-scrolling: touch; /* smooth momentum scroll on iOS */
+  touch-action: pan-y;              /* allow vertical pan */
+}
+
+/* Recipe card entrance: initial state and transition */
+.recipe-enter-wrapper {
+  perspective: 1000px;
+}
+
+.recipe-enter-inner {
+  transform: translateY(12px) scale(0.995);
+  opacity: 0;
+  transition: transform 320ms cubic-bezier(.22,.9,.3,1), opacity 220ms ease;
+  will-change: transform, opacity;
+}
+
+/* when React mounts the element, we trigger a reflow and then apply the final state via JS/CSS
+   But browsers will pick up the transition when we set final state after mount (see note). */
+.recipe-enter-inner[data-mounted="true"] {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* Extra: prevent accidental page/body scroll lock on mobile when container is used */
+html, body {
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+/* recipe entrance */
+.recipe-enter-wrapper { perspective: 1000px; }
+
+.recipe-enter-inner {
+  transform: translateY(12px) scale(0.995);
+  opacity: 0;
+  transition: transform 320ms cubic-bezier(.22,.9,.3,1), opacity 220ms ease;
+  will-change: transform, opacity;
+}
+
+.recipe-enter-inner[data-mounted="true"] {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+/* Chat container smooth scrolling + isolate overscroll so parent body isn't affected */
+.flex-1.overflow-y-auto {
+  -webkit-overflow-scrolling: touch; /* momentum on iOS */
+  touch-action: pan-y;               /* vertical panning */
+  overscroll-behavior: contain;      /* prevent parent body from capturing overscroll */
+}
+
+/* recipe entrance (kept from previous suggestion) */
+.recipe-enter-wrapper { perspective: 1000px; }
+
+.recipe-enter-inner {
+  transform: translateY(12px) scale(0.995);
+  opacity: 0;
+  transition: transform 320ms cubic-bezier(.22,.9,.3,1), opacity 220ms ease;
+  will-change: transform, opacity;
+}
+
+.recipe-enter-inner[data-mounted="true"] {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* optional: ensure no accidental pointer-events blocking */
+.recipe-enter-wrapper, .recipe-enter-inner {
+  pointer-events: auto;
+}

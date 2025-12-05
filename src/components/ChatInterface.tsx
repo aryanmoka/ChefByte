@@ -1,4 +1,4 @@
-// ChatInterface.tsx
+// ChatInterface.tsx (UPDATED)
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, RefreshCcw, Save } from 'lucide-react';
 import MessageBubble from './MessageBubble';
@@ -10,35 +10,36 @@ interface Message {
   id: string;
   type: 'user' | 'ai';
   content: string;
-  timestamp: string; // ISO string to ease storage
+  timestamp: string;
   isRecipe?: boolean;
   recipeData?: any;
 }
 
 interface ChatInterfaceProps {
   sessionId: string;
-  /** optional initial prompt to autofill & auto-send (from WelcomeScreen) */
   initialPrompt?: string | null;
 }
 
 const STORAGE_PREFIX = 'chefbyte_chat_';
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt = null }) => {
+export default function ChatInterface({ sessionId, initialPrompt = null }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSentId, setLastSentId] = useState<string | null>(null); // for retry
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [lastSentId, setLastSentId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Persist/load chat history per sessionId
+  // typing buffer map (to avoid frequent full-array updates)
+  const typingBuffers = useRef<Record<string, string>>({});
+
+  // load/save history
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_PREFIX + sessionId);
-      if (raw) {
-        setMessages(JSON.parse(raw));
-      }
+      if (raw) setMessages(JSON.parse(raw));
     } catch (e) {
       console.warn('Failed to load chat history:', e);
     }
@@ -52,48 +53,89 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
     }
   }, [messages, sessionId]);
 
-  // Scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-  useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
+  // enable smooth scrolling on mobile and allow vertical pan
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    // ensure helpful CSS for touch scrolling
+    el.style.webkitOverflowScrolling = 'touch'; // eslint-disable-line @typescript-eslint/ban-ts-comment
+    el.style.setProperty('-webkit-overflow-scrolling', 'touch'); // defensive
+    el.style.touchAction = 'pan-y';
+  }, []);
 
-  // Autofill & auto-send initialPrompt if provided
+  // scroll to bottom helper (use smooth but fallback gracefully)
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    // prefer scrollIntoView on the anchor ref; if it fails, scroll the container
+    try {
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    } catch {
+      const el = messagesContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+  };
+
+  useEffect(() => {
+    // only smooth scroll after a short delay so entrance animations don't fight the scroll
+    const t = setTimeout(() => scrollToBottom('smooth'), 80);
+    return () => clearTimeout(t);
+  }, [messages, isLoading]);
+
+  // autofocus initial prompt auto-send
   useEffect(() => {
     if (initialPrompt) {
       setInputValue(initialPrompt);
-      // Slight delay to let UI render & user see autofilled text
-      const t = setTimeout(() => {
-        handleSendMessage(initialPrompt);
-      }, 180);
+      const t = setTimeout(() => handleSendMessage(initialPrompt), 180);
       return () => clearTimeout(t);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt]); // run only once when initialPrompt changes
+  }, [initialPrompt]);
 
-  // Helper: add message to state
-  const pushMessage = (msg: Message) =>
-    setMessages(prev => [...prev, msg]);
+  // push helper
+  const pushMessage = (msg: Message) => setMessages(prev => [...prev, msg]);
 
-  // Typing animation: gradually reveal AI text
-  const animateAIText = (fullText: string, onChunk: (text: string) => void) => {
+  /**
+   * Throttled / batched typing animation:
+   * - Avoids updating the entire messages array every single character.
+   * - Writes to a typingBuffers map and updates the placeholder message at most every `throttleMs`.
+   */
+  const animateAIText = (placeholderId: string, fullText: string, throttleMs = 45) => {
+    let idx = 0;
     const total = fullText.length;
-    let i = 0;
-    const baseDelay = 14; // ms per char (adjust speed)
-    // chunking: add small delay to look natural
-    const interval = window.setInterval(() => {
-      i += Math.max(1, Math.floor(Math.random() * 3)); // random step for natural feel
-      if (i >= total) {
-        onChunk(fullText);
-        clearInterval(interval);
-      } else {
-        onChunk(fullText.slice(0, i));
+    let lastUpdate = performance.now();
+    let running = true;
+
+    const step = () => {
+      if (!running) return;
+      // increment by a few characters (randomised slightly for natural feel)
+      const stepSize = Math.max(1, Math.floor(1 + Math.random() * 3));
+      idx = Math.min(total, idx + stepSize);
+      typingBuffers.current[placeholderId] = fullText.slice(0, idx);
+
+      const now = performance.now();
+      if (now - lastUpdate >= throttleMs || idx === total) {
+        // commit to messages state - only replace the placeholder message content
+        setMessages(prev =>
+          prev.map(m => (m.id === placeholderId ? { ...m, content: typingBuffers.current[placeholderId] } : m))
+        );
+        lastUpdate = now;
       }
-    }, baseDelay);
-    return () => clearInterval(interval);
+
+      if (idx < total) {
+        // schedule next frame via setTimeout to avoid hammering RAF for long texts
+        window.setTimeout(step, Math.max(8, throttleMs / 2));
+      } else {
+        running = false;
+      }
+    };
+
+    step();
+
+    return () => {
+      running = false;
+    };
   };
 
-  // Core send logic (can be reused for retry)
+  // send message core
   const handleSendMessage = async (overrideText?: string) => {
     const text = (overrideText ?? inputValue ?? '').trim();
     if (!text || isLoading) return;
@@ -111,46 +153,47 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
     setIsLoading(true);
     setLastSentId(userMsg.id);
 
-    // temporary placeholder for AI message while generating
     const aiPlaceholderId = `ai_${Date.now()}_pending`;
     const aiPlaceholder: Message = {
       id: aiPlaceholderId,
       type: 'ai',
-      content: '', // will be filled by animation
+      content: '',
       timestamp: new Date().toISOString()
     };
     pushMessage(aiPlaceholder);
 
+    // ensure we scroll the placeholder into view quickly
+    setTimeout(() => scrollToBottom('smooth'), 40);
+
     try {
       const response = await chatAPI.sendMessage(text, sessionId);
 
-      // normalize response fields
       const respText: string = response?.response ?? '';
       const isRecipe = Boolean(response?.is_recipe);
       const recipeData = response?.recipe_data ?? null;
 
-      // animate typing into the placeholder message
-      let cancelAnim: (() => void) | null = null;
+      // animate typing with throttling
+      const stopAnim = animateAIText(aiPlaceholderId, respText, 50);
+
+      // wait for "animation" to complete: estimate duration but also wait for final commit
+      // use a promise that resolves when the buffer equals full text
       await new Promise<void>((resolve) => {
-        cancelAnim = animateAIText(respText, (chunk) => {
-          setMessages(prev => prev.map(m => m.id === aiPlaceholderId ? { ...m, content: chunk } : m));
-        });
-        // we want to resolve when the animation completes; animation clears itself
-        // fallback timeout: if response is short, allow small delay then resolve
-        const fallback = setTimeout(() => resolve(), Math.max(220, respText.length * 10));
-        // a simple completion detection: poll last message content equals full text
-        const checkInterval = setInterval(() => {
-          const latest = (messagesEndRef.current && null) // not needed
-        }, 200);
-        // simpler: resolve after a small delay proportional to text length
+        const maxWait = Math.min(Math.max(respText.length * 18, 300), 8000);
+        const poll = setInterval(() => {
+          if (typingBuffers.current[aiPlaceholderId] === respText) {
+            clearInterval(poll);
+            resolve();
+          }
+        }, 60);
+        // fallback safety
         setTimeout(() => {
-          clearTimeout(fallback);
-          clearInterval(checkInterval);
+          clearInterval(poll);
           resolve();
-        }, Math.min(Math.max(respText.length * 10, 250), 6000));
+        }, maxWait);
       });
 
-      // Replace placeholder with final AI message object
+      stopAnim && stopAnim();
+
       const aiMessage: Message = {
         id: `ai_${Date.now()}`,
         type: 'ai',
@@ -160,21 +203,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
         recipeData
       };
 
-      setMessages(prev => prev.map(m => m.id === aiPlaceholderId ? aiMessage : m));
+      // replace placeholder
+      setMessages(prev => prev.map(m => (m.id === aiPlaceholderId ? aiMessage : m)));
+
+      // small delay to allow card entrance animation to play before final scroll
+      setTimeout(() => scrollToBottom('smooth'), 120);
     } catch (err: any) {
       console.error('Chat error:', err);
       setError(err?.message || 'Failed to send message. Try again.');
-      // remove the ai placeholder (or show error message bubble)
       setMessages(prev => prev.filter(m => m.id !== aiPlaceholderId));
-      // Optionally allow retry by keeping lastSentId set
     } finally {
       setIsLoading(false);
-      // keep focus on input
       inputRef.current?.focus();
     }
   };
 
-  // Retry the last failed send (resend last user message)
   const handleRetry = async () => {
     if (!lastSentId) return;
     const lastUser = messages.find(m => m.id === lastSentId);
@@ -183,12 +226,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
     }
   };
 
-  // Save recipe via API (if available)
   const handleSaveRecipe = async (recipeData: any) => {
     try {
-      // optimistic feedback
       const res = await chatAPI.saveRecipe(sessionId, recipeData);
-      // res assumed { success: true, recipe_id: '...' }
       alert(res?.message ?? 'Recipe saved!');
     } catch (e) {
       console.error('Save recipe failed', e);
@@ -196,7 +236,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
     }
   };
 
-  // Keyboard handling for textarea: Enter to send, Shift+Enter newline
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -207,7 +246,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
   return (
     <div className="max-w-4xl mx-auto h-[calc(100vh-120px)] flex flex-col bg-gray-100 dark:bg-gray-900 rounded-lg shadow-xl">
       {/* Messages Display Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-6 space-y-6"
+        // Make sure the container receives touch events and does not block scroll
+        role="log"
+        aria-live="polite"
+      >
         {messages.length === 0 && (
           <div className="text-center text-gray-500 dark:text-gray-400 mt-20">
             <p className="text-lg">Start a conversation about cooking!</p>
@@ -220,15 +265,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
             <MessageBubble message={message} />
 
             {message.isRecipe && message.recipeData && (
-              <div className="mt-4 flex items-start gap-3">
-                <RecipeCard recipe={message.recipeData} sessionId={sessionId} />
+             <div className="mt-4 flex items-start gap-3 recipe-enter-wrapper">
+               <RecipeCard recipe={message.recipeData} sessionId={sessionId} />
                 <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => handleSaveRecipe(message.recipeData)}
-                    title="Save recipe"
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md"
+                 <button
+                   onClick={() => handleSaveRecipe(message.recipeData)}
+                   title="Save recipe"
+                   className="inline-flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md"
                   >
-                    <Save className="w-4 h-4" /> Save
+                  <Save className="w-4 h-4" /> Save
                   </button>
                 </div>
               </div>
@@ -236,7 +281,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
           </div>
         ))}
 
-        {isLoading && <TypingIndicator />} {/* typing indicator */}
+        {isLoading && <TypingIndicator />}
 
         {error && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center justify-between">
@@ -293,6 +338,4 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ sessionId, initialPrompt 
       </div>
     </div>
   );
-};
-
-export default ChatInterface;
+}
