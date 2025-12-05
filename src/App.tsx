@@ -21,27 +21,39 @@ function App() {
 
   const { isDark, toggleTheme } = useTheme();
 
+  const SESSION_KEY = 'chefbyte_session_id';
+
+  // session id generator
+  const makeSessionId = () =>
+    typeof (window as any).crypto?.randomUUID === 'function'
+      ? (window as any).crypto.randomUUID()
+      : `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
   // Initialize or load session ID (persisted in localStorage)
   useEffect(() => {
     try {
-      const key = 'chefbyte_session_id';
-      const existing = localStorage.getItem(key);
+      const existing = localStorage.getItem(SESSION_KEY);
       if (existing) {
         setSessionId(existing);
         return;
       }
-      const newId =
-        typeof (window as any).crypto?.randomUUID === 'function'
-          ? (window as any).crypto.randomUUID()
-          : `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
-      localStorage.setItem(key, newId);
+      const newId = makeSessionId();
+      localStorage.setItem(SESSION_KEY, newId);
       setSessionId(newId);
     } catch {
-      const fallback = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      setSessionId(fallback);
+      // fallback if localStorage or crypto unavailable
+      setSessionId(makeSessionId());
     }
   }, []);
+
+  // sync sessionId -> localStorage (keeps main session id updated)
+  useEffect(() => {
+    try {
+      if (sessionId) localStorage.setItem(SESSION_KEY, sessionId);
+    } catch {
+      // ignore
+    }
+  }, [sessionId]);
 
   // Close mobile menu on ESC key
   useEffect(() => {
@@ -52,13 +64,11 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isMobileMenuOpen]);
 
-  // Close mobile menu when clicking outside — robust and non-racy:
-  // we attach a mousedown listener on document so it runs before React's onClick.
+  // Close mobile menu when clicking outside — uses mousedown to run earlier than React clicks
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (!isMobileMenuOpen) return;
       const target = e.target as Node | null;
-      // if click is outside the aside (mobile menu), close it
       if (mobileMenuRef.current && target && !mobileMenuRef.current.contains(target)) {
         setIsMobileMenuOpen(false);
       }
@@ -67,19 +77,42 @@ function App() {
     return () => document.removeEventListener('mousedown', handler);
   }, [isMobileMenuOpen]);
 
+  // Prevent background scroll while mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [isMobileMenuOpen]);
+
   // Centralized navigation function
   const navigateTo = (view: 'home' | 'chatbot' | 'contact') => {
     if (view === 'home') {
       setHasStartedChat(false);
       setShowContactPage(false);
     } else if (view === 'chatbot') {
+      // Start a fresh chat session each time user opens the chatbot.
+      // This avoids showing previous conversation history.
+      const newId = makeSessionId();
+      setSessionId(newId);
+      // persist the new session id
+      try {
+        localStorage.setItem(SESSION_KEY, newId);
+      } catch {}
+      // mark chat started
       setHasStartedChat(true);
       setShowContactPage(false);
     } else if (view === 'contact') {
       setHasStartedChat(false);
       setShowContactPage(true);
     }
+
+    // close mobile menu on navigation
     setIsMobileMenuOpen(false);
+
     // ensure small scroll to top so header is visible
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -157,7 +190,9 @@ function App() {
       {/* Overlay (only active when menu open) */}
       <div
         ref={overlayRef}
-        className={`fixed inset-0 transition-opacity md:hidden ${isMobileMenuOpen ? 'opacity-60 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 transition-opacity md:hidden ${
+          isMobileMenuOpen ? 'opacity-60 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
         style={{ zIndex: 40, backgroundColor: 'rgba(0,0,0,0.45)' }}
         onClick={() => setIsMobileMenuOpen(false)}
         aria-hidden={!isMobileMenuOpen}
@@ -219,8 +254,9 @@ function App() {
 
             <button
               onClick={() => {
-                setIsMobileMenuOpen(false);
+                // open a fresh chat session
                 navigateTo('chatbot');
+                setIsMobileMenuOpen(false);
               }}
               className="block w-full text-left py-3 px-3 rounded-md text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             >
