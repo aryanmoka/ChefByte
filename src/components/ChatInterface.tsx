@@ -1,6 +1,5 @@
-// frontend/src/components/ChatInterface.tsx (updated)
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, RefreshCcw, Save } from 'lucide-react';
+import { Send, Loader2, RefreshCcw, Save, ArrowLeft } from 'lucide-react'; // Added ArrowLeft
 import MessageBubble from './MessageBubble';
 import RecipeCard from './RecipeCard';
 import TypingIndicator from './TypingIndicator';
@@ -18,11 +17,12 @@ interface Message {
 interface ChatInterfaceProps {
   sessionId: string;
   initialPrompt?: string | null;
+  onGoBack?: () => void; // Added new prop
 }
 
 const STORAGE_PREFIX = 'chefbyte_chat_';
 
-export default function ChatInterface({ sessionId, initialPrompt = null }: ChatInterfaceProps) {
+export default function ChatInterface({ sessionId, initialPrompt = null, onGoBack }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,10 +32,10 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // typing buffer map (to avoid frequent full-array updates)
+  // typing buffer map
   const typingBuffers = useRef<Record<string, string>>({});
 
-  // load/save history
+  // load history
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_PREFIX + sessionId);
@@ -45,6 +45,7 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
     }
   }, [sessionId]);
 
+  // save history
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_PREFIX + sessionId, JSON.stringify(messages));
@@ -53,18 +54,17 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
     }
   }, [messages, sessionId]);
 
-  // enable smooth scrolling on mobile and allow vertical pan
+  // enable smooth scrolling on mobile
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
-    // ensure helpful CSS for touch scrolling
-    // @ts-ignore - non-standard properties handled defensively
+    // @ts-ignore
     (el as any).style.webkitOverflowScrolling = 'touch';
     el.style.setProperty('-webkit-overflow-scrolling', 'touch');
     el.style.touchAction = 'pan-y';
   }, []);
 
-  // scroll to bottom helper (use smooth but fallback gracefully)
+  // scroll to bottom helper
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     try {
       messagesEndRef.current?.scrollIntoView({ behavior });
@@ -75,12 +75,11 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
   };
 
   useEffect(() => {
-    // only smooth scroll after a short delay so entrance animations don't fight the scroll
     const t = setTimeout(() => scrollToBottom('smooth'), 80);
     return () => clearTimeout(t);
   }, [messages, isLoading]);
 
-  // autofocus initial prompt auto-send
+  // autofocus initial prompt
   useEffect(() => {
     if (initialPrompt) {
       setInputValue(initialPrompt);
@@ -90,14 +89,8 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPrompt]);
 
-  // push helper
   const pushMessage = (msg: Message) => setMessages(prev => [...prev, msg]);
 
-  /**
-   * Throttled / batched typing animation:
-   * - Avoids updating the entire messages array every single character.
-   * - Writes to a typingBuffers map and updates the placeholder message at most every `throttleMs`.
-   */
   const animateAIText = (placeholderId: string, fullText: string, throttleMs = 45) => {
     let idx = 0;
     const total = fullText.length;
@@ -124,15 +117,10 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
         running = false;
       }
     };
-
     step();
-
-    return () => {
-      running = false;
-    };
+    return () => { running = false; };
   };
 
-  // send message core
   const handleSendMessage = async (overrideText?: string) => {
     const text = (overrideText ?? inputValue ?? '').trim();
     if (!text || isLoading) return;
@@ -159,20 +147,16 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
     };
     pushMessage(aiPlaceholder);
 
-    // ensure we scroll the placeholder into view quickly
     setTimeout(() => scrollToBottom('smooth'), 40);
 
     try {
       const response = await chatAPI.sendMessage(text, sessionId);
-
       const respText: string = response?.response ?? '';
       const isRecipe = Boolean(response?.is_recipe);
       const recipeData = response?.recipe_data ?? null;
 
-      // animate typing with throttling
       const stopAnim = animateAIText(aiPlaceholderId, respText, 50);
 
-      // wait for "animation" to complete: estimate duration but also wait for final commit
       await new Promise<void>((resolve) => {
         const maxWait = Math.min(Math.max(respText.length * 18, 300), 8000);
         const poll = setInterval(() => {
@@ -181,7 +165,6 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
             resolve();
           }
         }, 60);
-        // fallback safety
         setTimeout(() => {
           clearInterval(poll);
           resolve();
@@ -199,10 +182,7 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
         recipeData
       };
 
-      // replace placeholder
       setMessages(prev => prev.map(m => (m.id === aiPlaceholderId ? aiMessage : m)));
-
-      // small delay to allow card entrance animation to play before final scroll
       setTimeout(() => scrollToBottom('smooth'), 120);
     } catch (err: any) {
       console.error('Chat error:', err);
@@ -240,9 +220,21 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
   };
 
   return (
-    // Important: turn this wrapper into a flexible layout that fills available vertical space
-    // App.tsx should render this inside a parent that provides vertical space (e.g. main with flex-1)
-    <div className="flex flex-col flex-1 w-full max-w-4xl mx-auto min-h-0 bg-gray-100 dark:bg-gray-900 rounded-lg shadow-xl">
+    <div className="flex flex-col flex-1 w-full max-w-4xl mx-auto min-h-0 bg-gray-100 dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden">
+      
+      {/* --- NEW HEADER WITH BACK BUTTON --- */}
+      <div className="flex-none p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+        <button 
+          onClick={onGoBack} 
+          className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300"
+          aria-label="Back to Welcome Screen"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h2 className="font-semibold text-gray-800 dark:text-gray-100">Chef Byte Chat</h2>
+      </div>
+      {/* ---------------------------------- */}
+
       {/* Messages Display Area */}
       <div
         ref={messagesContainerRef}
@@ -290,7 +282,6 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
               <button
                 onClick={handleRetry}
                 className="inline-flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-700 border rounded-md"
-                aria-label="Retry sending message"
               >
                 <RefreshCcw className="w-4 h-4" /> Retry
               </button>
@@ -298,58 +289,54 @@ export default function ChatInterface({ sessionId, initialPrompt = null }: ChatI
           </div>
         )}
 
-        <div ref={messagesEndRef} /> {/* scroll anchor */}
+        <div ref={messagesEndRef} /> 
       </div>
 
       {/* Message Input Area */}
-      <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-  <div className="flex items-center gap-3">
-    
-    <div className="flex-1">
-      <textarea
-        id="chat-input"
-        ref={inputRef}
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Ask me about cooking..."
-        rows={1}
-        className="
-          w-full resize-none 
-          px-4 py-3 
-          h-12     /* <<< FIXED HEIGHT */
-          border border-gray-300 dark:border-gray-600
-          rounded-lg
-          focus:ring-2 focus:ring-emerald-500 focus:border-transparent
-          bg-white dark:bg-gray-700 
-          text-gray-900 dark:text-white
-          placeholder-gray-500 dark:placeholder-gray-400
-        "
-        disabled={isLoading}
-      />
-    </div>
-
-          {/* <div className="flex items-center gap-2"> */}
-            <button
-      onClick={() => handleSendMessage()}
-      disabled={!inputValue.trim() || isLoading}
-      className="
-        h-12    /* <<< SAME FIXED HEIGHT */
-        w-12    /* square button */
-        flex items-center justify-center
-        bg-emerald-600 hover:bg-emerald-700 
-        disabled:bg-gray-300 dark:disabled:bg-gray-600
-        text-white rounded-lg 
-        transition-colors duration-200
-        disabled:cursor-not-allowed
-      "
-      aria-label="Send message"
-    >
-      {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-    </button>
+      <div className="flex-none border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <textarea
+              id="chat-input"
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask me about cooking..."
+              rows={1}
+              className="
+                w-full resize-none 
+                px-4 py-3 
+                h-12
+                border border-gray-300 dark:border-gray-600
+                rounded-lg
+                focus:ring-2 focus:ring-emerald-500 focus:border-transparent
+                bg-white dark:bg-gray-700 
+                text-gray-900 dark:text-white
+                placeholder-gray-500 dark:placeholder-gray-400
+              "
+              disabled={isLoading}
+            />
           </div>
+
+          <button
+            onClick={() => handleSendMessage()}
+            disabled={!inputValue.trim() || isLoading}
+            className="
+              h-12 w-12
+              flex items-center justify-center
+              bg-emerald-600 hover:bg-emerald-700 
+              disabled:bg-gray-300 dark:disabled:bg-gray-600
+              text-white rounded-lg 
+              transition-colors duration-200
+              disabled:cursor-not-allowed
+            "
+            aria-label="Send message"
+          >
+            {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+          </button>
         </div>
       </div>
-    // </div>
+    </div>
   );
 }

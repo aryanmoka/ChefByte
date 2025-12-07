@@ -1,6 +1,5 @@
-// src/components/WelcomeScreen.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { Utensils, Sparkles, Flame } from 'lucide-react';
+import { Utensils, Sparkles } from 'lucide-react'; // Removed 'Flame' from imports
 
 type WelcomeScreenProps = {
   onStartChat: (initialPrompt?: string) => void;
@@ -212,14 +211,9 @@ export default function WelcomeScreen({ onStartChat }: WelcomeScreenProps) {
         {/* Blob decorative */}
         <div className="absolute -top-28 left-1/2 -translate-x-1/2 w-[420px] h-[420px] sm:w-[520px] sm:h-[520px] rounded-full bg-gradient-to-tr from-amber-100/60 to-amber-300/40 blur-3xl -z-10" />
 
-        {/* HERO header */}
+        {/* HERO header - ICON REMOVED */}
         <header className="mb-6 relative z-10">
-          <div className="mx-auto w-fit mb-4">
-            <div className="p-3 sm:p-4 bg-white/80 dark:bg-gray-800/60 backdrop-blur-md rounded-3xl shadow-xl border border-white/60 dark:border-gray-700/40">
-              <Flame className="w-9 h-9 sm:w-10 sm:h-10 text-amber-600" />
-            </div>
-          </div>
-
+          
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
             Welcome to <span className="text-amber-600">Chef Byte</span>
           </h1>
@@ -290,7 +284,7 @@ export default function WelcomeScreen({ onStartChat }: WelcomeScreenProps) {
                 ))}
               </div>
 
-              {/* left/right overlay buttons for desktop (visually subtle, accessible) */}
+              {/* left/right overlay buttons for desktop */}
               <button
                 onClick={() => {
                   setIsPaused(true);

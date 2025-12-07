@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linkedin, Github } from 'lucide-react';
+import { Linkedin, Github, Mail } from 'lucide-react';
 
 const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -25,6 +25,16 @@ const Footer: React.FC = () => {
             <h4 className="font-semibold text-lg mb-3 text-gray-200">Connect With Us</h4>
 
             <div className="flex space-x-5 mt-1">
+              
+              {/* Email (New Icon) */}
+              <a
+                href="mailto:aryanmokashi28@gmail.com"
+                aria-label="Email"
+                className="p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition-colors shadow-md"
+              >
+                <Mail size={22} className="text-amber-400" />
+              </a>
+
               {/* LinkedIn */}
               <a
                 href="https://www.linkedin.com/in/aryanmokashi49"
@@ -46,12 +56,13 @@ const Footer: React.FC = () => {
               >
                 <Github size={22} className="text-gray-300" />
               </a>
+
             </div>
           </div>
         </div>
 
         {/* Divider */}
-        <div className="border-t border-gray-800 pt-6 text-center text-gray-500 text-sm">
+        <div className="border-t border-gray-800 pt-6 text-center text-gray-500 text-sm mt-8">
           © {currentYear} <span className="text-amber-400 font-medium">Chef Byte</span> · All rights reserved.
         </div>
       </div>

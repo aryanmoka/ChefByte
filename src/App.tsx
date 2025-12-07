@@ -5,16 +5,11 @@ import { Moon, Sun } from 'lucide-react';
 import ChatInterface from './components/ChatInterface';
 import WelcomeScreen from './components/WelcomeScreen';
 import Footer from './components/Footer';
-import Contact from './components/Contact';
 import { useTheme } from './contexts/ThemeContext';
-
-// IMPORTANT: ThemeProvider should wrap <App /> (in index.tsx / main.tsx).
-// This file expects useTheme() to work correctly.
 
 function App() {
   const [hasStartedChat, setHasStartedChat] = useState(false);
   const [sessionId, setSessionId] = useState<string>('');
-  const [showContactPage, setShowContactPage] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -29,7 +24,7 @@ function App() {
       ? (window as any).crypto.randomUUID()
       : `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-  // Initialize or load session ID (persisted in localStorage)
+  // Initialize or load session ID
   useEffect(() => {
     try {
       const existing = localStorage.getItem(SESSION_KEY);
@@ -41,18 +36,15 @@ function App() {
       localStorage.setItem(SESSION_KEY, newId);
       setSessionId(newId);
     } catch {
-      // fallback if localStorage or crypto unavailable
       setSessionId(makeSessionId());
     }
   }, []);
 
-  // sync sessionId -> localStorage (keeps main session id updated)
+  // sync sessionId
   useEffect(() => {
     try {
       if (sessionId) localStorage.setItem(SESSION_KEY, sessionId);
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [sessionId]);
 
   // Close mobile menu on ESC key
@@ -64,7 +56,7 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isMobileMenuOpen]);
 
-  // Close mobile menu when clicking outside — uses mousedown to run earlier than React clicks
+  // Close mobile menu when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (!isMobileMenuOpen) return;
@@ -88,40 +80,28 @@ function App() {
     }
   }, [isMobileMenuOpen]);
 
-  // Centralized navigation function
-  const navigateTo = (view: 'home' | 'chatbot' | 'contact') => {
+  // Navigation Logic
+  const navigateTo = (view: 'home' | 'chatbot') => {
     if (view === 'home') {
       setHasStartedChat(false);
-      setShowContactPage(false);
     } else if (view === 'chatbot') {
-      // Start a fresh chat session each time user opens the chatbot.
-      // This avoids showing previous conversation history.
+      // If we are NOT already in chat, generate new session. 
+      // If we ARE in chat, do we want to reset? Currently logic resets it.
       const newId = makeSessionId();
       setSessionId(newId);
-      // persist the new session id
       try {
         localStorage.setItem(SESSION_KEY, newId);
       } catch {}
-      // mark chat started
       setHasStartedChat(true);
-      setShowContactPage(false);
-    } else if (view === 'contact') {
-      setHasStartedChat(false);
-      setShowContactPage(true);
     }
 
-    // close mobile menu on navigation
     setIsMobileMenuOpen(false);
-
-    // ensure small scroll to top so header is visible
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleGoBackToHome = () => navigateTo('home');
-
   return (
     <div className="min-h-screen bg-orange-50 dark:bg-gray-900 transition-colors duration-300 flex flex-col font-inter">
-      {/* Skip link for keyboard users */}
+      {/* Skip link */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 bg-white dark:bg-gray-800 px-3 py-2 rounded shadow"
@@ -139,18 +119,20 @@ function App() {
             <button
               onClick={() => navigateTo('home')}
               className={`text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-amber-300 transition duration-200 font-medium py-2 px-3 rounded-md ${
-                !hasStartedChat && !showContactPage ? 'text-indigo-600 dark:text-amber-300 font-bold' : ''
+                !hasStartedChat ? 'text-indigo-600 dark:text-amber-300 font-bold' : ''
               }`}
             >
               Home
             </button>
+
+            {/* ADDED CHAT BUTTON HERE */}
             <button
-              onClick={() => navigateTo('contact')}
+              onClick={() => navigateTo('chatbot')}
               className={`text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-amber-300 transition duration-200 font-medium py-2 px-3 rounded-md ${
-                showContactPage ? 'text-indigo-600 dark:text-amber-300 font-bold' : ''
+                hasStartedChat ? 'text-indigo-600 dark:text-amber-300 font-bold' : ''
               }`}
             >
-              Contact
+              Chat
             </button>
           </nav>
 
@@ -187,7 +169,7 @@ function App() {
         </div>
       </header>
 
-      {/* Overlay (only active when menu open) */}
+      {/* Overlay */}
       <div
         ref={overlayRef}
         className={`fixed inset-0 transition-opacity md:hidden ${
@@ -198,7 +180,7 @@ function App() {
         aria-hidden={!isMobileMenuOpen}
       />
 
-      {/* Mobile Sidebar - keep it above overlay and make clicks inside not close it */}
+      {/* Mobile Sidebar */}
       <aside
         ref={mobileMenuRef}
         className={`fixed top-0 right-0 h-full w-72 transform transition-transform duration-300 md:hidden ${
@@ -212,10 +194,7 @@ function App() {
           pointerEvents: isMobileMenuOpen ? 'auto' : 'none',
           touchAction: 'pan-y',
         }}
-        onClick={(e) => {
-          // stop event bubbling so document mousedown doesn't close while interacting inside
-          e.stopPropagation();
-        }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl">
           <div className="flex items-center justify-between p-4">
@@ -244,17 +223,6 @@ function App() {
 
             <button
               onClick={() => {
-                navigateTo('contact');
-                setIsMobileMenuOpen(false);
-              }}
-              className="block w-full text-left py-3 px-3 rounded-md text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-            >
-              Contact
-            </button>
-
-            <button
-              onClick={() => {
-                // open a fresh chat session
                 navigateTo('chatbot');
                 setIsMobileMenuOpen(false);
               }}
@@ -270,19 +238,20 @@ function App() {
         </div>
       </aside>
 
-      {/* Main content: pad top to header height so nothing is hidden under fixed header */}
+      {/* Main content */}
       <main id="main-content" className="pt-[64px] md:pt-[64px] flex-1 flex flex-col">
-        {!hasStartedChat && !showContactPage ? (
+        {!hasStartedChat ? (
           <WelcomeScreen onStartChat={() => navigateTo('chatbot')} />
-        ) : showContactPage ? (
-          <Contact onGoBack={() => navigateTo('chatbot')} />
         ) : (
-          <ChatInterface sessionId={sessionId} />
+          <ChatInterface 
+            sessionId={sessionId} 
+            onGoBack={() => setHasStartedChat(false)} 
+          />
         )}
       </main>
 
-      {/* Show footer on all pages EXCEPT chat */}
-      {(!hasStartedChat || showContactPage) && <Footer />}
+      {/* Show footer only when NOT in chat */}
+      {!hasStartedChat && <Footer />}
     </div>
   );
 }
