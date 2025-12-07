@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, RefreshCcw, Save, ArrowLeft } from 'lucide-react'; // Added ArrowLeft
+import { Send, Loader2, RefreshCcw, Save, ArrowLeft, ChefHat, Utensils } from 'lucide-react'; 
 import MessageBubble from './MessageBubble';
 import RecipeCard from './RecipeCard';
 import TypingIndicator from './TypingIndicator';
@@ -17,10 +17,13 @@ interface Message {
 interface ChatInterfaceProps {
   sessionId: string;
   initialPrompt?: string | null;
-  onGoBack?: () => void; // Added new prop
+  onGoBack?: () => void;
 }
 
 const STORAGE_PREFIX = 'chefbyte_chat_';
+
+// A high-quality food background image
+const BACKGROUND_IMAGE = "https://images.unsplash.com/photo-1556910103-1c02745a30bf?auto=format&fit=crop&q=80&w=2070";
 
 export default function ChatInterface({ sessionId, initialPrompt = null, onGoBack }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -220,122 +223,154 @@ export default function ChatInterface({ sessionId, initialPrompt = null, onGoBac
   };
 
   return (
-    <div className="flex flex-col flex-1 w-full max-w-4xl mx-auto min-h-0 bg-gray-100 dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden">
+    // 1. OUTER CONTAINER: Full width/height, centers the card, holds the background image
+    <div className="flex-1 w-full relative flex items-center justify-center p-4">
       
-      {/* --- NEW HEADER WITH BACK BUTTON --- */}
-      <div className="flex-none p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
-        <button 
-          onClick={onGoBack} 
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300"
-          aria-label="Back to Welcome Screen"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h2 className="font-semibold text-gray-800 dark:text-gray-100">Chef Byte Chat</h2>
-      </div>
-      {/* ---------------------------------- */}
-
-      {/* Messages Display Area */}
-      <div
-        ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0"
-        role="log"
-        aria-live="polite"
+      {/* Background Image Layer (Fills the empty space) */}
+      <div 
+        className="absolute inset-0 z-0"
+        style={{
+          backgroundImage: `url(${BACKGROUND_IMAGE})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
       >
-        {messages.length === 0 && (
-          <div className="text-center text-gray-500 dark:text-gray-400 mt-20">
-            <p className="text-lg">Start a conversation about cooking!</p>
-            <p className="text-sm mt-2">Ask me for recipes, cooking tips, or ingredient substitutions.</p>
-          </div>
-        )}
+        {/* Dark overlay to ensure the background isn't too distracting */}
+        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px]" />
+      </div>
 
-        {messages.map((message) => (
-          <div key={message.id}>
-            <MessageBubble message={message} />
-
-            {message.isRecipe && message.recipeData && (
-              <div className="mt-4 flex flex-col lg:flex-row items-start gap-3 recipe-enter-wrapper">
-                <RecipeCard recipe={message.recipeData} sessionId={sessionId} />
-                <div className="flex-shrink-0 flex flex-col gap-2">
-                  <button
-                    onClick={() => handleSaveRecipe(message.recipeData)}
-                    title="Save recipe"
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md"
-                  >
-                    <Save className="w-4 h-4" /> Save
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-
-        {isLoading && <TypingIndicator />}
-
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center justify-between">
-            <div>
-              <p className="font-medium">Error</p>
-              <p className="text-sm">{error}</p>
+      {/* 2. CHAT CARD: Constrained width, Fixed Height, Floating above background */}
+      <div className="relative z-10 flex flex-col w-full max-w-4xl h-[85vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
+        
+        {/* --- HEADER (LOCKED) --- */}
+        <div className="flex-none p-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
+          <button 
+            onClick={onGoBack} 
+            className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300"
+            aria-label="Back to Welcome Screen"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-amber-100 dark:bg-amber-900/30 rounded-full">
+              <ChefHat className="w-5 h-5 text-amber-600 dark:text-amber-500" />
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRetry}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-700 border rounded-md"
-              >
-                <RefreshCcw className="w-4 h-4" /> Retry
+            <div>
+              <h2 className="font-bold text-gray-800 dark:text-gray-100 leading-tight">Chef Byte</h2>
+              <p className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                <span className="block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> 
+                Online
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* --- MESSAGES AREA (SCROLLABLE) --- */}
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scroll-smooth bg-gray-50/50 dark:bg-gray-900/50"
+          role="log"
+          aria-live="polite"
+        >
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center px-4">
+              <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/20 rounded-full flex items-center justify-center mb-6 animate-bounce-slow">
+                <Utensils className="w-10 h-10 text-amber-600 dark:text-amber-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-2">
+                What's cooking?
+              </h3>
+              <p className="text-gray-500 dark:text-gray-400 max-w-sm">
+                I can help you create recipes from ingredients you have, or give you cooking tips!
+              </p>
+            </div>
+          )}
+
+          {messages.map((message) => (
+            <div key={message.id}>
+              <MessageBubble message={message} />
+
+              {message.isRecipe && message.recipeData && (
+                <div className="mt-4 flex flex-col lg:flex-row items-start gap-3 recipe-enter-wrapper">
+                  <RecipeCard recipe={message.recipeData} sessionId={sessionId} />
+                  <div className="flex-shrink-0 flex flex-col gap-2">
+                    <button
+                      onClick={() => handleSaveRecipe(message.recipeData)}
+                      className="inline-flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md shadow-sm transition-transform hover:scale-105"
+                    >
+                      <Save className="w-4 h-4" /> Save
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {isLoading && <TypingIndicator />}
+
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center justify-between shadow-sm">
+              <div>
+                <p className="font-medium">Error</p>
+                <p className="text-sm">{error}</p>
+              </div>
+              <button onClick={handleRetry} className="p-2 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-full transition">
+                <RefreshCcw className="w-4 h-4" />
               </button>
             </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} /> 
-      </div>
-
-      {/* Message Input Area */}
-      <div className="flex-none border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <textarea
-              id="chat-input"
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask me about cooking..."
-              rows={1}
-              className="
-                w-full resize-none 
-                px-4 py-3 
-                h-12
-                border border-gray-300 dark:border-gray-600
-                rounded-lg
-                focus:ring-2 focus:ring-emerald-500 focus:border-transparent
-                bg-white dark:bg-gray-700 
-                text-gray-900 dark:text-white
-                placeholder-gray-500 dark:placeholder-gray-400
-              "
-              disabled={isLoading}
-            />
-          </div>
-
-          <button
-            onClick={() => handleSendMessage()}
-            disabled={!inputValue.trim() || isLoading}
-            className="
-              h-12 w-12
-              flex items-center justify-center
-              bg-emerald-600 hover:bg-emerald-700 
-              disabled:bg-gray-300 dark:disabled:bg-gray-600
-              text-white rounded-lg 
-              transition-colors duration-200
-              disabled:cursor-not-allowed
-            "
-            aria-label="Send message"
-          >
-            {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-          </button>
+          )}
+          
+          <div ref={messagesEndRef} /> 
         </div>
+
+        {/* --- FOOTER (LOCKED) --- */}
+        <div className="flex-none border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <textarea
+                id="chat-input"
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask me about cooking..."
+                rows={1}
+                className="
+                  w-full resize-none 
+                  px-4 py-3 
+                  h-12
+                  border border-gray-300 dark:border-gray-700
+                  rounded-xl
+                  focus:ring-2 focus:ring-amber-500 focus:border-transparent
+                  bg-gray-50 dark:bg-gray-800 
+                  text-gray-900 dark:text-white
+                  placeholder-gray-500 dark:placeholder-gray-400
+                  transition-all duration-200
+                "
+                disabled={isLoading}
+              />
+            </div>
+
+            <button
+              onClick={() => handleSendMessage()}
+              disabled={!inputValue.trim() || isLoading}
+              className="
+                h-12 w-12
+                flex items-center justify-center
+                bg-amber-600 hover:bg-amber-700 
+                disabled:bg-gray-300 dark:disabled:bg-gray-700
+                text-white rounded-xl 
+                transition-all duration-200
+                disabled:cursor-not-allowed
+                shadow-md hover:shadow-lg
+              "
+              aria-label="Send message"
+            >
+              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   );
