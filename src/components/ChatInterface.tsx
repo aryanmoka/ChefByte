@@ -22,7 +22,7 @@ interface ChatInterfaceProps {
 
 const STORAGE_PREFIX = 'chefbyte_chat_';
 
-// A high-quality food background image
+// Background image for the outer area
 const BACKGROUND_IMAGE = "https://images.unsplash.com/photo-1556910103-1c02745a30bf?auto=format&fit=crop&q=80&w=2070";
 
 export default function ChatInterface({ sessionId, initialPrompt = null, onGoBack }: ChatInterfaceProps) {

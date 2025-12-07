@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Moon, Sun } from 'lucide-react';
 
@@ -86,7 +85,6 @@ function App() {
       setHasStartedChat(false);
     } else if (view === 'chatbot') {
       // If we are NOT already in chat, generate new session. 
-      // If we ARE in chat, do we want to reset? Currently logic resets it.
       const newId = makeSessionId();
       setSessionId(newId);
       try {
@@ -125,7 +123,6 @@ function App() {
               Home
             </button>
 
-            {/* ADDED CHAT BUTTON HERE */}
             <button
               onClick={() => navigateTo('chatbot')}
               className={`text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-amber-300 transition duration-200 font-medium py-2 px-3 rounded-md ${
